@@ -153,9 +153,26 @@ async function main(): Promise<void> {
 
   const state = await harness.getRunState(runId)
   const history = await harness.getHistory(runId)
+  const functionCalls = await harness.getFunctionCalls(runId)
 
   console.log("\nFinal state:")
   console.log(JSON.stringify(state, null, 2))
+
+  console.log("\nTool calls:")
+  for (const call of functionCalls) {
+    console.log(`\n[${call.callIndex}] ${call.functionName} (${call.status})`)
+    console.log(
+      JSON.stringify(
+        {
+          args: call.args,
+          result: call.result,
+          error: call.error,
+        },
+        null,
+        2,
+      ),
+    )
+  }
 
   console.log("\nTranscript:")
   for (const message of history) {

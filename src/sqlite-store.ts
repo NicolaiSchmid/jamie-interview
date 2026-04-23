@@ -152,6 +152,17 @@ export class SqliteHarnessStore implements HarnessStore {
       )
   }
 
+  async listFunctionCalls(runId: string): Promise<FunctionCallRecord[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM function_calls
+         WHERE run_id = ?
+         ORDER BY created_at ASC, step_id ASC, call_index ASC`,
+      )
+      .all(runId) as Record<string, unknown>[]
+    return rows.map((row) => this.mapFunctionCall(row))
+  }
+
   async getFunctionCallByIndex(input: {
     runId: string
     stepId: string

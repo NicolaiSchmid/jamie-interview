@@ -64,6 +64,7 @@ describe("createHarness", () => {
     await waitForRunState(harness, runId, "completed")
 
     const history = await harness.getHistory(runId)
+    const functionCalls = await harness.getFunctionCalls(runId)
     const state = await harness.getRunState(runId)
 
     expect(state?.state).toBe("completed")
@@ -81,6 +82,15 @@ describe("createHarness", () => {
       error: null,
       stdout: null,
       stderr: null,
+    })
+    expect(functionCalls).toHaveLength(1)
+    expect(functionCalls[0]).toMatchObject({
+      callIndex: 1,
+      functionName: "getMeetings",
+      args: { since: "2026-04-01" },
+      status: "succeeded",
+      result: [{ id: "meeting-1" }, { id: "meeting-2" }],
+      error: null,
     })
   })
 

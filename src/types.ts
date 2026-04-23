@@ -192,6 +192,7 @@ export interface HarnessStore {
   updateStep(stepId: string, patch: Partial<StepRecord>): Promise<void>
 
   createFunctionCall(record: FunctionCallRecord): Promise<void>
+  listFunctionCalls(runId: string): Promise<FunctionCallRecord[]>
   getFunctionCallByIndex(input: {
     runId: string
     stepId: string
@@ -204,6 +205,7 @@ export interface HarnessStore {
 export interface Harness {
   submitTask(input: SubmitTaskInput): Promise<SubmitTaskResult>
   getHistory(runId: string): Promise<MessageRecord[]>
+  getFunctionCalls(runId: string): Promise<FunctionCallRecord[]>
   getRunState(runId: string): Promise<RunStateView | null>
   approve(input: { runId: string; requestId: string }): Promise<void>
   reject(input: { runId: string; requestId: string; reason?: string }): Promise<void>

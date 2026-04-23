@@ -76,6 +76,10 @@ class DurableHarness implements Harness {
     return await this.config.store.listMessages(runId)
   }
 
+  async getFunctionCalls(runId: string): Promise<FunctionCallRecord[]> {
+    return await this.config.store.listFunctionCalls(runId)
+  }
+
   async getRunState(runId: string): Promise<RunStateView | null> {
     const run = await this.config.store.getRun(runId)
     if (!run) {
