@@ -1,0 +1,31 @@
+{
+  "name": "jamie-harness",
+  "version": "0.1.0",
+  "description": "Minimal harness SDK for durable code-mode execution",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "sdk",
+    "llm",
+    "harness",
+    "typescript"
+  ],
+  "license": "MIT",
+  "packageManager": "bun@1.3.6"
+}
