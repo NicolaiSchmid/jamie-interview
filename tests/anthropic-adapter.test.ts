@@ -43,7 +43,6 @@ describe("AnthropicModelAdapter", () => {
         description: "Execute TypeScript",
         inputSchema: { type: "object" },
       },
-      functions: [],
     })
 
     expect(result).toEqual({
@@ -93,7 +92,6 @@ describe("AnthropicModelAdapter", () => {
         description: "Execute TypeScript",
         inputSchema: { type: "object" },
       },
-      functions: [],
     })
 
     expect(result).toEqual({

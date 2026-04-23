@@ -28,7 +28,6 @@ export type StepStatus =
 
 export type BlockingReason =
   | { kind: "approval"; requestId: string; functionName: string }
-  | { kind: "reconciliation_required"; stepId: string }
 
 export type RunRecord = {
   id: string
@@ -91,7 +90,6 @@ export type FunctionCallRecord = {
 export type FunctionContext = {
   runId: string
   stepId: string
-  metadata: Record<string, Json>
 }
 
 export type FunctionDefinition<TArgs extends Json = Json, TResult extends Json = Json> = {
@@ -133,7 +131,6 @@ export type ModelTurnResult =
 export type SubmitTaskInput = {
   prompt: string
   functions?: string[]
-  metadata?: Record<string, Json>
 }
 
 export type SubmitTaskResult = {
@@ -165,7 +162,6 @@ export interface ModelAdapter {
       description: string
       inputSchema: Json
     }
-    functions: EffectiveFunctionBinding[]
   }): Promise<ModelTurnResult>
 }
 

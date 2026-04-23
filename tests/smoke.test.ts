@@ -10,8 +10,6 @@ describe("package smoke test", () => {
       execute: async ({ id }) => ({ id }),
     })
 
-    await expect(fn.execute({ id: "abc" }, { runId: "r", stepId: "s", metadata: {} })).resolves.toEqual(
-      { id: "abc" },
-    )
+    await expect(fn.execute({ id: "abc" }, { runId: "r", stepId: "s" })).resolves.toEqual({ id: "abc" })
   })
 })

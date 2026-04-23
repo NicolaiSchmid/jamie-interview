@@ -1,13 +1,20 @@
-export { AnthropicModelAdapter } from "./adapters/anthropic.js"
-export { OpenAIModelAdapter } from "./adapters/openai.js"
-export { defineFunction } from "./define-function.js"
+import type { FunctionDefinition, Json } from "./types.js"
+
+export {
+  AnthropicModelAdapter,
+  OpenAIModelAdapter,
+  SequenceModelAdapter,
+} from "./model-adapters.js"
 export { ApprovalRequiredError, RejectedApprovalError } from "./errors.js"
 export { createHarness } from "./harness.js"
 export { InProcessTypeScriptExecutor } from "./run-ts.js"
 export { SqliteHarnessStore } from "./sqlite-store.js"
-export { SequenceModelAdapter } from "./testing.js"
-export type { AnthropicModelAdapterOptions } from "./adapters/anthropic.js"
-export type { OpenAIModelAdapterOptions } from "./adapters/openai.js"
+export type { AnthropicModelAdapterOptions, OpenAIModelAdapterOptions } from "./model-adapters.js"
+export function defineFunction<TArgs extends Json, TResult extends Json>(
+  definition: FunctionDefinition<TArgs, TResult>,
+): FunctionDefinition<TArgs, TResult> {
+  return definition
+}
 export type {
   ApprovalPolicy,
   BlockingReason,

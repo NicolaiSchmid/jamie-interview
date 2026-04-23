@@ -44,7 +44,6 @@ describe("OpenAIModelAdapter", () => {
         description: "Execute TypeScript",
         inputSchema: { type: "object" },
       },
-      functions: [],
     })
 
     expect(result).toEqual({
@@ -103,7 +102,6 @@ describe("OpenAIModelAdapter", () => {
         description: "Execute TypeScript",
         inputSchema: { type: "object" },
       },
-      functions: [],
     })
 
     expect(result).toEqual({

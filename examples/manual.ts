@@ -141,9 +141,6 @@ async function main(): Promise<void> {
     prompt:
       "Find the latest product meeting, summarize the decisions, and list the action items with owners.",
     functions: ["listMeetings", "getMeetingSummary", "getActionItems"],
-    metadata: {
-      example: "manual",
-    },
   })
 
   console.log(`Started run: ${runId}`)

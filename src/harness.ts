@@ -1,15 +1,15 @@
 import { ApprovalRequiredError, RejectedApprovalError } from "./errors.js"
 import { InProcessTypeScriptExecutor } from "./run-ts.js"
 import type {
-  BlockingReason,
   EffectiveFunctionBinding,
   FunctionCallRecord,
   Harness,
   HarnessConfig,
   Json,
   MessageRecord,
-  ModelTurnResult,
   RunRecord,
+  SubmitTaskInput,
+  SubmitTaskResult,
   RunStateView,
   StepRecord,
 } from "./types.js"
@@ -27,11 +27,7 @@ class DurableHarness implements Harness {
     this.executor = config.executor ?? new InProcessTypeScriptExecutor()
   }
 
-  async submitTask(input: {
-    prompt: string
-    functions?: string[]
-    metadata?: Record<string, Json>
-  }): Promise<{ runId: string }> {
+  async submitTask(input: SubmitTaskInput): Promise<SubmitTaskResult> {
     const timestamp = now()
     const runId = createId()
     const run: RunRecord = {
@@ -45,27 +41,13 @@ class DurableHarness implements Harness {
     }
 
     await this.config.store.createRun(run)
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId,
-      role: "user",
-      content: {
-        type: "user_prompt",
-        prompt: input.prompt,
-        metadata: input.metadata ?? {},
-      },
-      createdAt: now(),
+    await this.appendMessage(runId, "user", {
+      type: "user_prompt",
+      prompt: input.prompt,
     })
-
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId,
-      role: "tool",
-      content: {
-        type: "available_functions",
-        functions: this.getBindings(input.functions),
-      },
-      createdAt: now(),
+    await this.appendMessage(runId, "tool", {
+      type: "available_functions",
+      functions: this.getBindings(input.functions),
     })
 
     this.scheduleRun(runId)
@@ -251,16 +233,9 @@ class DurableHarness implements Harness {
           additionalProperties: false,
         },
       },
-      functions: bindings,
     })
 
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId: run.id,
-      role: "assistant",
-      content: result.assistantMessage,
-      createdAt: now(),
-    })
+    await this.appendMessage(run.id, "assistant", result.assistantMessage)
 
     await this.config.store.updateStep(step.id, {
       status: "succeeded",
@@ -337,19 +312,13 @@ class DurableHarness implements Harness {
         updatedAt: now(),
       })
 
-      await this.config.store.appendMessage({
-        id: createId(),
-        runId: run.id,
-        role: "tool",
-        content: {
-          type: "runTS_result",
-          ok: result.ok,
-          output: result.ok ? result.output : null,
-          error: result.ok ? null : result.error,
-          stdout: result.stdout ?? null,
-          stderr: result.stderr ?? null,
-        },
-        createdAt: now(),
+      await this.appendMessage(run.id, "tool", {
+        type: "runTS_result",
+        ok: result.ok,
+        output: result.ok ? result.output : null,
+        error: result.ok ? null : result.error,
+        stdout: result.stdout ?? null,
+        stderr: result.stderr ?? null,
       })
 
       await this.config.store.updateRun(run.id, {
@@ -383,16 +352,10 @@ class DurableHarness implements Harness {
         finishedAt: now(),
         updatedAt: now(),
       })
-      await this.config.store.appendMessage({
-        id: createId(),
-        runId: run.id,
-        role: "tool",
-        content: {
-          type: "runTS_result",
-          ok: false,
-          error: getErrorMessage(error),
-        },
-        createdAt: now(),
+      await this.appendMessage(run.id, "tool", {
+        type: "runTS_result",
+        ok: false,
+        error: getErrorMessage(error),
       })
       await this.config.store.updateRun(run.id, {
         state: "running_model",
@@ -514,7 +477,6 @@ class DurableHarness implements Harness {
       const result = await definition.execute(parsedArgs, {
         runId: input.runId,
         stepId: input.stepId,
-        metadata: {},
       })
       const output = definition.outputSchema ? definition.outputSchema.parse(result) : result
       record.status = "succeeded"
@@ -574,7 +536,6 @@ class DurableHarness implements Harness {
       const result = await definition.execute(existing.args, {
         runId: input.runId,
         stepId: input.stepId,
-        metadata: {},
       })
       const output = definition.outputSchema ? definition.outputSchema.parse(result) : result
       await this.config.store.updateFunctionCall(existing.id, {
@@ -673,6 +634,20 @@ class DurableHarness implements Harness {
     }
     await this.config.store.createStep(step)
     return step
+  }
+
+  private async appendMessage(
+    runId: string,
+    role: MessageRecord["role"],
+    content: Json,
+  ): Promise<void> {
+    await this.config.store.appendMessage({
+      id: createId(),
+      runId,
+      role,
+      content,
+      createdAt: now(),
+    })
   }
 
   private async requireRun(runId: string): Promise<RunRecord> {
