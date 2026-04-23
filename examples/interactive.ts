@@ -62,13 +62,6 @@ const meetingActionItems: Record<string, Array<{ owner: string; task: string }>>
   ],
 }
 
-const sentEmails: Array<{
-  to: string
-  subject: string
-  body: string
-  sentAt: string
-}> = []
-
 async function main(): Promise<void> {
   const harness = createHarness({
     model: new OpenAIModelAdapter({
@@ -134,40 +127,6 @@ async function main(): Promise<void> {
           }
         },
       }),
-      sendFollowUpEmail: defineFunction({
-        description:
-          "Send a follow-up email. Use this only when the user explicitly asks you to send or draft-and-send an email.",
-        requiresApproval: true,
-        inputSchema: z.object({
-          to: z.string(),
-          subject: z.string(),
-          body: z.string(),
-        }),
-        execute: async ({ to, subject, body }) => {
-          const record = {
-            to,
-            subject,
-            body,
-            sentAt: new Date().toISOString(),
-          }
-          sentEmails.push(record)
-          return {
-            ok: true,
-            message: "Follow-up email sent.",
-            email: record,
-          }
-        },
-      }),
-      listSentEmails: defineFunction({
-        description: "List emails that were already sent in this terminal demo session.",
-        inputSchema: z.object({}),
-        execute: async () => {
-          return {
-            count: sentEmails.length,
-            emails: [...sentEmails],
-          }
-        },
-      }),
     },
   })
 
@@ -180,9 +139,6 @@ async function main(): Promise<void> {
     console.log(`Model: ${model}`)
     console.log('Type a task and press Enter. Type "exit" to quit.')
     console.log('Try: "Summarize the latest meeting and list the action items."')
-    console.log(
-      'Try: "Draft and send a follow-up email to jamie@example.com about the latest meeting."',
-    )
 
     while (true) {
       const nextPrompt = await questionOrNull(rl, "\n> ")
@@ -205,8 +161,6 @@ async function main(): Promise<void> {
           "listMeetings",
           "getMeetingSummary",
           "getActionItems",
-          "sendFollowUpEmail",
-          "listSentEmails",
         ],
         metadata: {
           example: "interactive",
