@@ -140,7 +140,6 @@ async function main(): Promise<void> {
   const { runId } = await harness.submitTask({
     prompt:
       "Find the latest product meeting, summarize the decisions, and list the action items with owners.",
-    functions: ["listMeetings", "getMeetingSummary", "getActionItems"],
   })
 
   console.log(`Started run: ${runId}`)

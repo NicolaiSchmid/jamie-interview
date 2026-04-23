@@ -130,7 +130,6 @@ export type ModelTurnResult =
 
 export type SubmitTaskInput = {
   prompt: string
-  functions?: string[]
 }
 
 export type SubmitTaskResult = {

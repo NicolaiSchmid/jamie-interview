@@ -45,10 +45,6 @@ class DurableHarness implements Harness {
       type: "user_prompt",
       prompt: input.prompt,
     })
-    await this.appendMessage(runId, "tool", {
-      type: "available_functions",
-      functions: this.getBindings(input.functions),
-    })
 
     this.scheduleRun(runId)
     return { runId }
@@ -215,7 +211,7 @@ class DurableHarness implements Harness {
     })
 
     const messages = await this.config.store.listMessages(run.id)
-    const bindings = this.getBindings(this.readAvailableFunctionNames(messages))
+    const bindings = this.getBindings()
 
     const result = await this.config.model.runTurn({
       runId: run.id,
@@ -293,15 +289,12 @@ class DurableHarness implements Harness {
       updatedAt: now(),
     })
 
-    const messages = await this.config.store.listMessages(run.id)
-    const allowedFunctionNames = this.readAvailableFunctionNames(messages)
-
     try {
       const result = await this.executor.runTS({
         runId: run.id,
         stepId: step.id,
         code: input.input.code,
-        bindings: this.createBindings(run.id, step.id, allowedFunctionNames),
+        bindings: this.createBindings(run.id, step.id),
       })
 
       await this.config.store.updateStep(step.id, {
@@ -366,15 +359,11 @@ class DurableHarness implements Harness {
     }
   }
 
-  private createBindings(
-    runId: string,
-    stepId: string,
-    allowedFunctionNames: string[],
-  ): Record<string, (args: Json) => Promise<Json>> {
+  private createBindings(runId: string, stepId: string): Record<string, (args: Json) => Promise<Json>> {
     const bindings: Record<string, (args: Json) => Promise<Json>> = {}
     let callIndex = 0
 
-    for (const functionName of allowedFunctionNames) {
+    for (const functionName of Object.keys(this.config.functions)) {
       bindings[functionName] = async (args: Json) => {
         callIndex += 1
         return await this.invokeFunctionForStep({
@@ -555,13 +544,9 @@ class DurableHarness implements Harness {
     }
   }
 
-  private getBindings(selectedFunctionNames?: string[]): EffectiveFunctionBinding[] {
-    const names = selectedFunctionNames ?? Object.keys(this.config.functions)
-    return names.map((name) => {
+  private getBindings(): EffectiveFunctionBinding[] {
+    return Object.keys(this.config.functions).map((name) => {
       const definition = this.config.functions[name]
-      if (!definition) {
-        throw new Error(`Unknown function in selection: ${name}`)
-      }
 
       return {
         name,
@@ -587,29 +572,6 @@ class DurableHarness implements Harness {
       "Available functions:",
       functionList || "- none",
     ].join("\n")
-  }
-
-  private readAvailableFunctionNames(messages: MessageRecord[]): string[] {
-    const toolMessage = [...messages]
-      .reverse()
-      .find((message) => {
-        if (message.role !== "tool" || message.content === null || Array.isArray(message.content)) {
-          return false
-        }
-
-        if (typeof message.content !== "object") {
-          return false
-        }
-
-        return message.content.type === "available_functions"
-      })
-
-    if (!toolMessage) {
-      return Object.keys(this.config.functions)
-    }
-
-    const content = toolMessage.content as { functions: EffectiveFunctionBinding[] }
-    return content.functions.map((binding) => binding.name)
   }
 
   private async createStep(

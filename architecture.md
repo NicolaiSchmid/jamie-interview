@@ -194,7 +194,6 @@ type StepRecord = {
 ```ts
 type SubmitTaskInput = {
   prompt: string
-  functions?: string[]
   metadata?: Record<string, unknown>
 }
 
@@ -314,16 +313,9 @@ function defineFunction<TArgs extends Json, TResult extends Json>(
 }
 ```
 
-## Per-Run Function Exposure
+## Function Exposure
 
-Not every registered function needs to be available in every run.
-
-At `submitTask`, resolve:
-
-- the full registered function object
-- the optional allowlist for this run
-
-Then provide only the selected function names to the model prompt and to `runTS`.
+All registered functions are available in every run.
 
 ```ts
 type EffectiveFunctionBinding = {
@@ -594,7 +586,6 @@ const harness = createHarness({
 ```ts
 const { runId } = await harness.submitTask({
   prompt: "Find the latest product meeting and summarize the decisions.",
-  functions: ["getMeetings", "getMeetingSummary"],
 })
 ```
 

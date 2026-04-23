@@ -58,7 +58,6 @@ describe("createHarness", () => {
 
     const { runId } = await harness.submitTask({
       prompt: "Summarize the latest meeting.",
-      functions: ["getMeetings"],
     })
 
     await waitForRunState(harness, runId, "completed")
@@ -68,14 +67,8 @@ describe("createHarness", () => {
     const state = await harness.getRunState(runId)
 
     expect(state?.state).toBe("completed")
-    expect(history.map((message) => message.role)).toEqual([
-      "user",
-      "tool",
-      "assistant",
-      "tool",
-      "assistant",
-    ])
-    expect(history[3]?.content).toEqual({
+    expect(history.map((message) => message.role)).toEqual(["user", "assistant", "tool", "assistant"])
+    expect(history[2]?.content).toEqual({
       type: "runTS_result",
       ok: true,
       output: { count: 2, latestId: "meeting-1" },
@@ -140,7 +133,6 @@ describe("createHarness", () => {
 
     const { runId } = await harness.submitTask({
       prompt: "Summarize the latest meeting.",
-      functions: ["getMeetings", "getMeetingSummary"],
     })
 
     await waitForRunState(harness, runId, "awaiting_approval")
