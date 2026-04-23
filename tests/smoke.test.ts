@@ -1,9 +1,17 @@
 import { describe, expect, it } from "bun:test"
+import { z } from "zod"
 
-import { notImplemented } from "../src/index.js"
+import { defineFunction } from "../src/index.js"
 
 describe("package smoke test", () => {
-  it("loads the library", () => {
-    expect(notImplemented).toBe(true)
+  it("exports defineFunction", async () => {
+    const fn = defineFunction({
+      inputSchema: z.object({ id: z.string() }),
+      execute: async ({ id }) => ({ id }),
+    })
+
+    await expect(fn.execute({ id: "abc" }, { runId: "r", stepId: "s", metadata: {} })).resolves.toEqual(
+      { id: "abc" },
+    )
   })
 })

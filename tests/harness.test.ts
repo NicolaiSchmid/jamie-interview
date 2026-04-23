@@ -1,0 +1,151 @@
+import { describe, expect, it } from "bun:test"
+import { z } from "zod"
+
+import {
+  SequenceModelAdapter,
+  SqliteHarnessStore,
+  createHarness,
+  defineFunction,
+} from "../src/index.js"
+
+async function waitForRunState(
+  harness: ReturnType<typeof createHarness>,
+  runId: string,
+  expected: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const state = await harness.getRunState(runId)
+    if (state?.state === expected) {
+      return
+    }
+
+    await Bun.sleep(5)
+  }
+
+  throw new Error(`Run ${runId} did not reach state ${expected}`)
+}
+
+describe("createHarness", () => {
+  it("runs a task end to end", async () => {
+    const harness = createHarness({
+      model: new SequenceModelAdapter([
+        {
+          kind: "run_ts",
+          assistantMessage: { type: "assistant", text: "Running code" },
+          toolCallId: "tool-1",
+          input: {
+            language: "typescript",
+            code: `
+              const meetings = await getMeetings({ since: "2026-04-01" })
+              return { count: meetings.length, latestId: meetings[0].id }
+            `,
+          },
+        },
+        {
+          kind: "final",
+          assistantMessage: { type: "assistant", text: "Done" },
+        },
+      ]),
+      store: new SqliteHarnessStore(),
+      functions: {
+        getMeetings: defineFunction({
+          description: "Return meetings since a date.",
+          inputSchema: z.object({ since: z.string() }),
+          execute: async () => [{ id: "meeting-1" }, { id: "meeting-2" }],
+        }),
+      },
+    })
+
+    const { runId } = await harness.submitTask({
+      prompt: "Summarize the latest meeting.",
+      functions: ["getMeetings"],
+    })
+
+    await waitForRunState(harness, runId, "completed")
+
+    const history = await harness.getHistory(runId)
+    const state = await harness.getRunState(runId)
+
+    expect(state?.state).toBe("completed")
+    expect(history.map((message) => message.role)).toEqual([
+      "user",
+      "tool",
+      "assistant",
+      "tool",
+      "assistant",
+    ])
+    expect(history[3]?.content).toEqual({
+      type: "runTS_result",
+      ok: true,
+      output: { count: 2, latestId: "meeting-1" },
+      error: null,
+      stdout: null,
+      stderr: null,
+    })
+  })
+
+  it("blocks on approval and resumes after approval without re-running completed calls", async () => {
+    let listCalls = 0
+    let summaryCalls = 0
+
+    const harness = createHarness({
+      model: new SequenceModelAdapter([
+        {
+          kind: "run_ts",
+          assistantMessage: { type: "assistant", text: "Running code" },
+          toolCallId: "tool-1",
+          input: {
+            language: "typescript",
+            code: `
+              const meetings = await getMeetings({ since: "2026-04-01" })
+              const summary = await getMeetingSummary({ meetingId: meetings[0].id })
+              return { summary }
+            `,
+          },
+        },
+        {
+          kind: "final",
+          assistantMessage: { type: "assistant", text: "Done" },
+        },
+      ]),
+      store: new SqliteHarnessStore(),
+      approvalPolicy: { mode: "by_function", functionNames: ["getMeetingSummary"] },
+      functions: {
+        getMeetings: defineFunction({
+          inputSchema: z.object({ since: z.string() }),
+          execute: async () => {
+            listCalls += 1
+            return [{ id: "meeting-1" }]
+          },
+        }),
+        getMeetingSummary: defineFunction({
+          inputSchema: z.object({ meetingId: z.string() }),
+          execute: async () => {
+            summaryCalls += 1
+            return { text: "approved summary" }
+          },
+        }),
+      },
+    })
+
+    const { runId } = await harness.submitTask({
+      prompt: "Summarize the latest meeting.",
+      functions: ["getMeetings", "getMeetingSummary"],
+    })
+
+    await waitForRunState(harness, runId, "awaiting_approval")
+    const pending = await harness.getRunState(runId)
+    expect(pending?.pendingApproval?.functionName).toBe("getMeetingSummary")
+    expect(listCalls).toBe(1)
+    expect(summaryCalls).toBe(0)
+
+    await harness.approve({
+      runId,
+      requestId: pending?.pendingApproval?.requestId ?? "",
+    })
+
+    await waitForRunState(harness, runId, "completed")
+    expect(listCalls).toBe(1)
+    expect(summaryCalls).toBe(1)
+  })
+})
