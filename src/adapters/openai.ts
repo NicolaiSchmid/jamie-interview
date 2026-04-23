@@ -29,6 +29,8 @@ type OpenAIChatClient = {
 
 export type OpenAIModelAdapterOptions = {
   apiKey?: string
+  baseURL?: string
+  defaultHeaders?: Record<string, string>
   client?: OpenAIChatClient
   model: string
 }
@@ -42,6 +44,8 @@ export class OpenAIModelAdapter implements ModelAdapter {
       options.client ??
       (new OpenAI({
         apiKey: options.apiKey,
+        baseURL: options.baseURL,
+        defaultHeaders: options.defaultHeaders,
       }) as unknown as OpenAIChatClient)
     this.model = options.model
   }
