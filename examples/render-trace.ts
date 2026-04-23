@@ -169,15 +169,23 @@ export function printHistory(history: MessageRecord[]): void {
 }
 
 export async function watchRunTrace(input: {
+  approve?(params: { runId: string; requestId: string }): Promise<void>
   getHistory(runId: string): Promise<MessageRecord[]>
   getRunState(runId: string): Promise<RunStateView | null>
+  maxWaitMs?: number
+  autoApprove?: boolean
   runId: string
   pollMs?: number
 }): Promise<RunStateView | null> {
   const seenMessages = new Set<string>()
+  const startedAt = Date.now()
   let previousState: string | null = null
 
   while (true) {
+    if (input.maxWaitMs && Date.now() - startedAt > input.maxWaitMs) {
+      throw new Error(`Run ${input.runId} did not finish within ${input.maxWaitMs}ms`)
+    }
+
     const [state, history] = await Promise.all([
       input.getRunState(input.runId),
       input.getHistory(input.runId),
@@ -187,6 +195,13 @@ export async function watchRunTrace(input: {
       console.log("\n[state]")
       printRunState(state)
       previousState = state?.state ?? null
+    }
+
+    if (input.autoApprove && state?.state === "awaiting_approval" && state.pendingApproval && input.approve) {
+      await input.approve({
+        runId: input.runId,
+        requestId: state.pendingApproval.requestId,
+      })
     }
 
     for (const message of history) {

@@ -23,6 +23,8 @@ if (!apiKey) {
   )
 }
 
+const openAiKey: string = apiKey
+
 const meetings = [
   {
     id: "mtg-103",
@@ -57,6 +59,8 @@ const meetingActionItems: Record<string, Array<{ owner: string; task: string }>>
   ],
 }
 
+const defaultMaxWaitMs = 30 * 60 * 1000
+
 async function simulateSlowToolCall(): Promise<void> {
   await Bun.sleep(toolCallDelayMs)
 }
@@ -65,10 +69,10 @@ async function main(): Promise<void> {
   const harness = createHarness({
     model: new OpenAIModelAdapter({
       model,
-      apiKey,
+      apiKey: openAiKey,
       baseURL,
       defaultHeaders: {
-        "api-key": apiKey,
+        "api-key": openAiKey,
       },
     }),
     store: new SqliteHarnessStore(),
@@ -80,12 +84,17 @@ async function main(): Promise<void> {
         }),
         execute: async ({ since }) => {
           await simulateSlowToolCall()
-
+          const asRows = meetings.map((m) => ({
+            id: m.id,
+            date: m.date,
+            title: m.title,
+            participants: [...m.participants],
+          }))
           if (!since) {
-            return [...meetings]
+            return asRows
           }
 
-          return meetings.filter((meeting) => meeting.date >= since)
+          return asRows.filter((meeting) => meeting.date >= since)
         },
       }),
       getMeetingSummary: defineFunction({
@@ -132,16 +141,27 @@ async function main(): Promise<void> {
   const { runId } = await harness.submitTask({
     prompt:
       "Find the latest product meeting, summarize the decisions, and list the action items with owners.",
+    functions: ["listMeetings", "getMeetingSummary", "getActionItems"],
+    metadata: {
+      example: "manual",
+    },
   })
 
   console.log(`Started run: ${runId}`)
   console.log(`Using base URL: ${baseURL}`)
   console.log(`Using model: ${model}`)
   console.log(`Each tool call sleeps for ${toolCallDelayMs}ms`)
+  const fromEnv = Number(process.env.MANUAL_EXAMPLE_MAX_WAIT_MS)
+  const maxWaitMs =
+    Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : defaultMaxWaitMs
   const finalState = await watchRunTrace({
     runId,
+    approve: ({ runId: targetRunId, requestId }) =>
+      harness.approve({ runId: targetRunId, requestId }),
+    autoApprove: true,
     getHistory: (targetRunId) => harness.getHistory(targetRunId),
     getRunState: (targetRunId) => harness.getRunState(targetRunId),
+    maxWaitMs,
   })
 
   const functionCalls = await harness.getFunctionCalls(runId)
@@ -164,7 +184,6 @@ async function main(): Promise<void> {
       ),
     )
   }
-
 }
 
 await main()
