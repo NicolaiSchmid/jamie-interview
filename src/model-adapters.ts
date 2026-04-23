@@ -77,8 +77,10 @@ export class OpenAIModelAdapter implements ModelAdapter {
       description: string
       inputSchema: Json
     }
+    functions: { name: string; description?: string; inputSchema: Json; requiresApproval: boolean }[]
   }): Promise<ModelTurnResult> {
     void input.runId
+    void input.functions
 
     const response = await this.client.chat.completions.create({
       model: this.model,
@@ -160,8 +162,10 @@ export class AnthropicModelAdapter implements ModelAdapter {
       description: string
       inputSchema: Json
     }
+    functions: { name: string; description?: string; inputSchema: Json; requiresApproval: boolean }[]
   }): Promise<ModelTurnResult> {
     void input.runId
+    void input.functions
 
     const response = await this.client.messages.create({
       model: this.model,
@@ -228,7 +232,17 @@ export class SequenceModelAdapter implements ModelAdapter {
 
   constructor(private readonly responses: ModelTurnResult[]) {}
 
-  async runTurn(): Promise<ModelTurnResult> {
+  async runTurn(input: {
+    runId: string
+    messages: MessageRecord[]
+    tool: {
+      name: "runTS"
+      description: string
+      inputSchema: Json
+    }
+    functions: { name: string; description?: string; inputSchema: Json; requiresApproval: boolean }[]
+  }): Promise<ModelTurnResult> {
+    void input
     const response = this.responses[this.index]
     if (!response) {
       throw new Error("No more mock model responses configured")

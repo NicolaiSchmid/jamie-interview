@@ -6,6 +6,7 @@ import {
   createHarness,
   defineFunction,
 } from "../src/index.js"
+import { printRunState, watchRunTrace } from "./render-trace.js"
 
 const placeholderApiKey = "paste_your_cosmoconsult_api_key_here"
 const openAIKey = process.env.OPENAI_API_KEY
@@ -14,6 +15,7 @@ const apiKey =
   openAIKey && openAIKey !== placeholderApiKey ? openAIKey : legacyAIKey
 const baseURL = process.env.OPENAI_BASE_URL ?? "https://ai.cosmoconsult.com/api/v1"
 const model = process.env.OPENAI_MODEL ?? "openai/gpt-5-mini"
+const toolCallDelayMs = Number(process.env.EXAMPLE_TOOL_DELAY_MS ?? "2000")
 
 if (!apiKey) {
   throw new Error(
@@ -55,24 +57,8 @@ const meetingActionItems: Record<string, Array<{ owner: string; task: string }>>
   ],
 }
 
-async function waitForRunToFinish(
-  harness: ReturnType<typeof createHarness>,
-  runId: string,
-): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    const state = await harness.getRunState(runId)
-    if (!state) {
-      throw new Error(`Run ${runId} was not found`)
-    }
-
-    if (state.state === "completed" || state.state === "failed" || state.state === "canceled") {
-      return
-    }
-
-    await Bun.sleep(50)
-  }
-
-  throw new Error(`Run ${runId} did not finish in time`)
+async function simulateSlowToolCall(): Promise<void> {
+  await Bun.sleep(toolCallDelayMs)
 }
 
 async function main(): Promise<void> {
@@ -93,6 +79,8 @@ async function main(): Promise<void> {
           since: z.string().optional(),
         }),
         execute: async ({ since }) => {
+          await simulateSlowToolCall()
+
           if (!since) {
             return [...meetings]
           }
@@ -106,6 +94,8 @@ async function main(): Promise<void> {
           meetingId: z.string(),
         }),
         execute: async ({ meetingId }) => {
+          await simulateSlowToolCall()
+
           const summary = meetingSummaries[meetingId]
           if (!summary) {
             throw new Error(`Unknown meeting id: ${meetingId}`)
@@ -123,6 +113,8 @@ async function main(): Promise<void> {
           meetingId: z.string(),
         }),
         execute: async ({ meetingId }) => {
+          await simulateSlowToolCall()
+
           const items = meetingActionItems[meetingId]
           if (!items) {
             throw new Error(`Unknown meeting id: ${meetingId}`)
@@ -145,14 +137,17 @@ async function main(): Promise<void> {
   console.log(`Started run: ${runId}`)
   console.log(`Using base URL: ${baseURL}`)
   console.log(`Using model: ${model}`)
-  await waitForRunToFinish(harness, runId)
+  console.log(`Each tool call sleeps for ${toolCallDelayMs}ms`)
+  const finalState = await watchRunTrace({
+    runId,
+    getHistory: (targetRunId) => harness.getHistory(targetRunId),
+    getRunState: (targetRunId) => harness.getRunState(targetRunId),
+  })
 
-  const state = await harness.getRunState(runId)
-  const history = await harness.getHistory(runId)
   const functionCalls = await harness.getFunctionCalls(runId)
 
   console.log("\nFinal state:")
-  console.log(JSON.stringify(state, null, 2))
+  printRunState(finalState)
 
   console.log("\nTool calls:")
   for (const call of functionCalls) {
@@ -170,11 +165,6 @@ async function main(): Promise<void> {
     )
   }
 
-  console.log("\nTranscript:")
-  for (const message of history) {
-    console.log(`\n[${message.role}]`)
-    console.log(JSON.stringify(message.content, null, 2))
-  }
 }
 
 await main()
