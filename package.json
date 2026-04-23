@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "bunx tsc -p tsconfig.json",
+    "example:interactive": "bun run examples/interactive.ts",
     "example:manual": "bun run examples/manual.ts",
     "example:submit-and-poll": "bun run examples/submit-and-poll.ts",
     "test": "bun test",
