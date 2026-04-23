@@ -150,4 +150,38 @@ describe("createHarness", () => {
     expect(listCalls).toBe(1)
     expect(summaryCalls).toBe(1)
   })
+
+  it("marks the run as failed when the model adapter throws", async () => {
+    const harness = createHarness({
+      model: {
+        runTurn: async () => {
+          throw new Error("model exploded")
+        },
+      },
+      store: new SqliteHarnessStore(),
+      functions: {
+        getMeetings: defineFunction({
+          inputSchema: z.object({ since: z.string() }),
+          execute: async () => [{ id: "meeting-1" }],
+        }),
+      },
+    })
+
+    const { runId } = await harness.submitTask({
+      prompt: "Summarize the latest meeting.",
+    })
+
+    await waitForRunState(harness, runId, "failed")
+
+    const state = await harness.getRunState(runId)
+    const history = await harness.getHistory(runId)
+
+    expect(state).toMatchObject({
+      state: "failed",
+      error: "model exploded",
+      currentStepId: null,
+      blockingReason: null,
+    })
+    expect(history.map((message) => message.role)).toEqual(["user"])
+  })
 })

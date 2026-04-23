@@ -163,9 +163,13 @@ class DurableHarness implements Harness {
       return await existing
     }
 
-    const promise = this.processRun(runId).finally(() => {
-      this.inflightRuns.delete(runId)
-    })
+    const promise = this.processRun(runId)
+      .catch(async (error) => {
+        await this.failRun(runId, error)
+      })
+      .finally(() => {
+        this.inflightRuns.delete(runId)
+      })
     this.inflightRuns.set(runId, promise)
     return await promise
   }
@@ -609,6 +613,35 @@ class DurableHarness implements Harness {
       role,
       content,
       createdAt: now(),
+    })
+  }
+
+  private async failRun(runId: string, error: unknown): Promise<void> {
+    const run = await this.config.store.getRun(runId)
+    if (!run) {
+      return
+    }
+
+    const message = getErrorMessage(error)
+
+    if (run.currentStepId) {
+      const step = await this.config.store.getStep(run.currentStepId)
+      if (step && step.status !== "succeeded" && step.status !== "failed" && step.status !== "canceled") {
+        await this.config.store.updateStep(step.id, {
+          status: "failed",
+          error: message,
+          finishedAt: now(),
+          updatedAt: now(),
+        })
+      }
+    }
+
+    await this.config.store.updateRun(run.id, {
+      state: "failed",
+      currentStepId: null,
+      blockingReason: null,
+      error: message,
+      updatedAt: now(),
     })
   }
 
