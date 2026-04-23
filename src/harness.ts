@@ -45,27 +45,15 @@ class DurableHarness implements Harness {
     }
 
     await this.config.store.createRun(run)
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId,
-      role: "user",
-      content: {
-        type: "user_prompt",
-        prompt: input.prompt,
-        metadata: input.metadata ?? {},
-      },
-      createdAt: now(),
+    await this.appendMessage(runId, "user", {
+      type: "user_prompt",
+      prompt: input.prompt,
+      metadata: input.metadata ?? {},
     })
 
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId,
-      role: "tool",
-      content: {
-        type: "available_functions",
-        functions: this.getBindings(input.functions),
-      },
-      createdAt: now(),
+    await this.appendMessage(runId, "tool", {
+      type: "available_functions",
+      functions: this.getBindings(input.functions),
     })
 
     this.scheduleRun(runId)
@@ -113,6 +101,13 @@ class DurableHarness implements Harness {
       error: null,
       updatedAt: now(),
     })
+    await this.appendMessage(input.runId, "tool", {
+      type: "function_call_approval",
+      requestId: call.id,
+      functionName: call.functionName,
+      decision: "approved",
+      reason: null,
+    })
 
     if (call.approvalStepId) {
       await this.config.store.updateStep(call.approvalStepId, {
@@ -142,6 +137,13 @@ class DurableHarness implements Harness {
       status: "rejected",
       error: reason,
       updatedAt: now(),
+    })
+    await this.appendMessage(input.runId, "tool", {
+      type: "function_call_approval",
+      requestId: call.id,
+      functionName: call.functionName,
+      decision: "rejected",
+      reason,
     })
 
     if (call.approvalStepId) {
@@ -254,13 +256,7 @@ class DurableHarness implements Harness {
       functions: bindings,
     })
 
-    await this.config.store.appendMessage({
-      id: createId(),
-      runId: run.id,
-      role: "assistant",
-      content: result.assistantMessage,
-      createdAt: now(),
-    })
+    await this.appendMessage(run.id, "assistant", result.assistantMessage)
 
     await this.config.store.updateStep(step.id, {
       status: "succeeded",
@@ -277,6 +273,12 @@ class DurableHarness implements Harness {
       })
       return
     }
+
+    await this.appendMessage(run.id, "assistant", {
+      type: "runTS_call",
+      toolCallId: result.toolCallId,
+      input: result.input,
+    })
 
     const codeStep = await this.createStep(run.id, {
       type: "code",
@@ -337,19 +339,13 @@ class DurableHarness implements Harness {
         updatedAt: now(),
       })
 
-      await this.config.store.appendMessage({
-        id: createId(),
-        runId: run.id,
-        role: "tool",
-        content: {
-          type: "runTS_result",
-          ok: result.ok,
-          output: result.ok ? result.output : null,
-          error: result.ok ? null : result.error,
-          stdout: result.stdout ?? null,
-          stderr: result.stderr ?? null,
-        },
-        createdAt: now(),
+      await this.appendMessage(run.id, "tool", {
+        type: "runTS_result",
+        ok: result.ok,
+        output: result.ok ? result.output : null,
+        error: result.ok ? null : result.error,
+        stdout: result.stdout ?? null,
+        stderr: result.stderr ?? null,
       })
 
       await this.config.store.updateRun(run.id, {
@@ -383,16 +379,10 @@ class DurableHarness implements Harness {
         finishedAt: now(),
         updatedAt: now(),
       })
-      await this.config.store.appendMessage({
-        id: createId(),
-        runId: run.id,
-        role: "tool",
-        content: {
-          type: "runTS_result",
-          ok: false,
-          error: getErrorMessage(error),
-        },
-        createdAt: now(),
+      await this.appendMessage(run.id, "tool", {
+        type: "runTS_result",
+        ok: false,
+        error: getErrorMessage(error),
       })
       await this.config.store.updateRun(run.id, {
         state: "running_model",
@@ -489,6 +479,14 @@ class DurableHarness implements Harness {
         updatedAt: now(),
       }
       await this.config.store.createFunctionCall(record)
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_call",
+        requestId: record.id,
+        callIndex: record.callIndex,
+        functionName: record.functionName,
+        args: record.args,
+        status: record.status,
+      })
       throw new ApprovalRequiredError({
         requestId: record.id,
         functionName: record.functionName,
@@ -511,6 +509,15 @@ class DurableHarness implements Harness {
     }
 
     try {
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_call",
+        requestId: record.id,
+        callIndex: record.callIndex,
+        functionName: record.functionName,
+        args: record.args,
+        status: "started",
+      })
+
       const result = await definition.execute(parsedArgs, {
         runId: input.runId,
         stepId: input.stepId,
@@ -520,10 +527,28 @@ class DurableHarness implements Harness {
       record.status = "succeeded"
       record.result = output
       await this.config.store.createFunctionCall(record)
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_result",
+        requestId: record.id,
+        callIndex: record.callIndex,
+        functionName: record.functionName,
+        ok: true,
+        result: output,
+        error: null,
+      })
       return output
     } catch (error) {
       record.error = getErrorMessage(error)
       await this.config.store.createFunctionCall(record)
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_result",
+        requestId: record.id,
+        callIndex: record.callIndex,
+        functionName: record.functionName,
+        ok: false,
+        result: null,
+        error: record.error,
+      })
       throw error
     }
   }
@@ -571,6 +596,15 @@ class DurableHarness implements Harness {
     }
 
     try {
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_call",
+        requestId: existing.id,
+        callIndex: existing.callIndex,
+        functionName: existing.functionName,
+        args: existing.args,
+        status: "started",
+      })
+
       const result = await definition.execute(existing.args, {
         runId: input.runId,
         stepId: input.stepId,
@@ -583,12 +617,31 @@ class DurableHarness implements Harness {
         error: null,
         updatedAt: now(),
       })
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_result",
+        requestId: existing.id,
+        callIndex: existing.callIndex,
+        functionName: existing.functionName,
+        ok: true,
+        result: output,
+        error: null,
+      })
       return output
     } catch (error) {
+      const errorMessage = getErrorMessage(error)
       await this.config.store.updateFunctionCall(existing.id, {
         status: "failed",
-        error: getErrorMessage(error),
+        error: errorMessage,
         updatedAt: now(),
+      })
+      await this.appendMessage(input.runId, "tool", {
+        type: "function_result",
+        requestId: existing.id,
+        callIndex: existing.callIndex,
+        functionName: existing.functionName,
+        ok: false,
+        result: null,
+        error: errorMessage,
       })
       throw error
     }
@@ -649,6 +702,20 @@ class DurableHarness implements Harness {
 
     const content = toolMessage.content as { functions: EffectiveFunctionBinding[] }
     return content.functions.map((binding) => binding.name)
+  }
+
+  private async appendMessage(
+    runId: string,
+    role: MessageRecord["role"],
+    content: Json,
+  ): Promise<void> {
+    await this.config.store.appendMessage({
+      id: createId(),
+      runId,
+      role,
+      content,
+      createdAt: now(),
+    })
   }
 
   private async createStep(

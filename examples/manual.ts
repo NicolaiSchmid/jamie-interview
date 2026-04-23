@@ -6,6 +6,7 @@ import {
   createHarness,
   defineFunction,
 } from "../src/index.js"
+import { printRunState, watchRunTrace } from "./render-trace.js"
 
 const placeholderApiKey = "paste_your_cosmoconsult_api_key_here"
 const openAIKey = process.env.OPENAI_API_KEY
@@ -54,26 +55,6 @@ const meetingActionItems: Record<string, Array<{ owner: string; task: string }>>
     { owner: "Jamie", task: "Lock the store interfaces for v0." },
     { owner: "Alex", task: "Add adapter tests for final and tool-call responses." },
   ],
-}
-
-async function waitForRunToFinish(
-  harness: ReturnType<typeof createHarness>,
-  runId: string,
-): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    const state = await harness.getRunState(runId)
-    if (!state) {
-      throw new Error(`Run ${runId} was not found`)
-    }
-
-    if (state.state === "completed" || state.state === "failed" || state.state === "canceled") {
-      return
-    }
-
-    await Bun.sleep(50)
-  }
-
-  throw new Error(`Run ${runId} did not finish in time`)
 }
 
 async function simulateSlowToolCall(): Promise<void> {
@@ -161,14 +142,16 @@ async function main(): Promise<void> {
   console.log(`Using base URL: ${baseURL}`)
   console.log(`Using model: ${model}`)
   console.log(`Each tool call sleeps for ${toolCallDelayMs}ms`)
-  await waitForRunToFinish(harness, runId)
+  const finalState = await watchRunTrace({
+    runId,
+    getHistory: (targetRunId) => harness.getHistory(targetRunId),
+    getRunState: (targetRunId) => harness.getRunState(targetRunId),
+  })
 
-  const state = await harness.getRunState(runId)
-  const history = await harness.getHistory(runId)
   const functionCalls = await harness.getFunctionCalls(runId)
 
   console.log("\nFinal state:")
-  console.log(JSON.stringify(state, null, 2))
+  printRunState(finalState)
 
   console.log("\nTool calls:")
   for (const call of functionCalls) {
@@ -186,11 +169,6 @@ async function main(): Promise<void> {
     )
   }
 
-  console.log("\nTranscript:")
-  for (const message of history) {
-    console.log(`\n[${message.role}]`)
-    console.log(JSON.stringify(message.content, null, 2))
-  }
 }
 
 await main()

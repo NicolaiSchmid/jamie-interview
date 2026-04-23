@@ -28,6 +28,20 @@ async function waitForRunState(
   throw new Error(`Run ${runId} did not reach state ${expected}`)
 }
 
+function getMessageType(message: { content: unknown }): string | null {
+  if (
+    typeof message.content === "object" &&
+    message.content !== null &&
+    !Array.isArray(message.content) &&
+    "type" in message.content &&
+    typeof message.content.type === "string"
+  ) {
+    return message.content.type
+  }
+
+  return null
+}
+
 describe("createHarness", () => {
   it("runs a task end to end", async () => {
     const harness = createHarness({
@@ -71,14 +85,17 @@ describe("createHarness", () => {
     const state = await harness.getRunState(runId)
 
     expect(state?.state).toBe("completed")
-    expect(history.map((message) => message.role)).toEqual([
-      "user",
-      "tool",
+    expect(history.map(getMessageType)).toEqual([
+      "user_prompt",
+      "available_functions",
       "assistant",
-      "tool",
+      "runTS_call",
+      "function_call",
+      "function_result",
+      "runTS_result",
       "assistant",
     ])
-    expect(history[3]?.content).toEqual({
+    expect(history[6]?.content).toEqual({
       type: "runTS_result",
       ok: true,
       output: { count: 2, latestId: "meeting-1" },
@@ -160,6 +177,22 @@ describe("createHarness", () => {
     await waitForRunState(harness, runId, "completed")
     expect(listCalls).toBe(1)
     expect(summaryCalls).toBe(1)
+
+    const history = await harness.getHistory(runId)
+    expect(history.map(getMessageType)).toEqual([
+      "user_prompt",
+      "available_functions",
+      "assistant",
+      "runTS_call",
+      "function_call",
+      "function_result",
+      "function_call",
+      "function_call_approval",
+      "function_call",
+      "function_result",
+      "runTS_result",
+      "assistant",
+    ])
   })
 
   it("reopens a persisted run and loads state/history from a fresh harness instance", async () => {
@@ -213,11 +246,14 @@ describe("createHarness", () => {
       const functionCalls = await reopenedHarness.getFunctionCalls(runId)
 
       expect(state?.state).toBe("completed")
-      expect(history.map((message) => message.role)).toEqual([
-        "user",
-        "tool",
+      expect(history.map(getMessageType)).toEqual([
+        "user_prompt",
+        "available_functions",
         "assistant",
-        "tool",
+        "runTS_call",
+        "function_call",
+        "function_result",
+        "runTS_result",
         "assistant",
       ])
       expect(functionCalls).toHaveLength(1)

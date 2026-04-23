@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { SequenceModelAdapter, SqliteHarnessStore, createHarness, defineFunction } from "../src/index.js"
+import { printHistory, printRunState } from "./render-trace.js"
 
 const toolCallDelayMs = Number(process.env.EXAMPLE_TOOL_DELAY_MS ?? "2000")
 
@@ -64,43 +65,23 @@ async function main(): Promise<void> {
   console.log(`Each tool call sleeps for ${toolCallDelayMs}ms`)
 
   console.log("\nState right after submitTask():")
-  console.log(JSON.stringify(await harness.getRunState(runId), null, 2))
+  printRunState(await harness.getRunState(runId))
 
   const inspectDelayMs = toolCallDelayMs + 1000
   console.log(`\nSleeping for ${inspectDelayMs}ms before reading state and history...`)
   await Bun.sleep(inspectDelayMs)
 
   console.log("\nState after waiting:")
-  console.log(JSON.stringify(await harness.getRunState(runId), null, 2))
+  printRunState(await harness.getRunState(runId))
 
   const state = await harness.getRunState(runId)
-  const functionCalls = await harness.getFunctionCalls(runId)
   const history = await harness.getHistory(runId)
 
   console.log("\nFinal state snapshot:")
-  console.log(JSON.stringify(state, null, 2))
-
-  console.log("\nFunction calls:")
-  for (const call of functionCalls) {
-    console.log(`\n[${call.callIndex}] ${call.functionName} (${call.status})`)
-    console.log(
-      JSON.stringify(
-        {
-          args: call.args,
-          result: call.result,
-          error: call.error,
-        },
-        null,
-        2,
-      ),
-    )
-  }
+  printRunState(state)
 
   console.log("\nTranscript:")
-  for (const message of history) {
-    console.log(`\n[${message.role}]`)
-    console.log(JSON.stringify(message.content, null, 2))
-  }
+  printHistory(history)
 }
 
 await main()
