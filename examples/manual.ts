@@ -14,6 +14,7 @@ const apiKey =
   openAIKey && openAIKey !== placeholderApiKey ? openAIKey : legacyAIKey
 const baseURL = process.env.OPENAI_BASE_URL ?? "https://ai.cosmoconsult.com/api/v1"
 const model = process.env.OPENAI_MODEL ?? "openai/gpt-5-mini"
+const toolCallDelayMs = Number(process.env.EXAMPLE_TOOL_DELAY_MS ?? "2000")
 
 if (!apiKey) {
   throw new Error(
@@ -75,6 +76,10 @@ async function waitForRunToFinish(
   throw new Error(`Run ${runId} did not finish in time`)
 }
 
+async function simulateSlowToolCall(): Promise<void> {
+  await Bun.sleep(toolCallDelayMs)
+}
+
 async function main(): Promise<void> {
   const harness = createHarness({
     model: new OpenAIModelAdapter({
@@ -93,6 +98,8 @@ async function main(): Promise<void> {
           since: z.string().optional(),
         }),
         execute: async ({ since }) => {
+          await simulateSlowToolCall()
+
           if (!since) {
             return [...meetings]
           }
@@ -106,6 +113,8 @@ async function main(): Promise<void> {
           meetingId: z.string(),
         }),
         execute: async ({ meetingId }) => {
+          await simulateSlowToolCall()
+
           const summary = meetingSummaries[meetingId]
           if (!summary) {
             throw new Error(`Unknown meeting id: ${meetingId}`)
@@ -123,6 +132,8 @@ async function main(): Promise<void> {
           meetingId: z.string(),
         }),
         execute: async ({ meetingId }) => {
+          await simulateSlowToolCall()
+
           const items = meetingActionItems[meetingId]
           if (!items) {
             throw new Error(`Unknown meeting id: ${meetingId}`)
@@ -149,6 +160,7 @@ async function main(): Promise<void> {
   console.log(`Started run: ${runId}`)
   console.log(`Using base URL: ${baseURL}`)
   console.log(`Using model: ${model}`)
+  console.log(`Each tool call sleeps for ${toolCallDelayMs}ms`)
   await waitForRunToFinish(harness, runId)
 
   const state = await harness.getRunState(runId)

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 
 import {
@@ -157,5 +160,74 @@ describe("createHarness", () => {
     await waitForRunState(harness, runId, "completed")
     expect(listCalls).toBe(1)
     expect(summaryCalls).toBe(1)
+  })
+
+  it("reopens a persisted run and loads state/history from a fresh harness instance", async () => {
+    const filename = join(tmpdir(), `jamie-harness-${crypto.randomUUID()}.sqlite`)
+
+    try {
+      const harness = createHarness({
+        model: new SequenceModelAdapter([
+          {
+            kind: "run_ts",
+            assistantMessage: { type: "assistant", text: "Running code" },
+            toolCallId: "tool-1",
+            input: {
+              language: "typescript",
+              code: `
+                const meetings = await getMeetings({ since: "2026-04-01" })
+                return { count: meetings.length, latestId: meetings[0].id }
+              `,
+            },
+          },
+          {
+            kind: "final",
+            assistantMessage: { type: "assistant", text: "Done" },
+          },
+        ]),
+        store: new SqliteHarnessStore({ filename }),
+        functions: {
+          getMeetings: defineFunction({
+            description: "Return meetings since a date.",
+            inputSchema: z.object({ since: z.string() }),
+            execute: async () => [{ id: "meeting-1" }, { id: "meeting-2" }],
+          }),
+        },
+      })
+
+      const { runId } = await harness.submitTask({
+        prompt: "Summarize the latest meeting.",
+        functions: ["getMeetings"],
+      })
+
+      await waitForRunState(harness, runId, "completed")
+
+      const reopenedHarness = createHarness({
+        model: new SequenceModelAdapter([]),
+        store: new SqliteHarnessStore({ filename }),
+        functions: {},
+      })
+
+      const state = await reopenedHarness.getRunState(runId)
+      const history = await reopenedHarness.getHistory(runId)
+      const functionCalls = await reopenedHarness.getFunctionCalls(runId)
+
+      expect(state?.state).toBe("completed")
+      expect(history.map((message) => message.role)).toEqual([
+        "user",
+        "tool",
+        "assistant",
+        "tool",
+        "assistant",
+      ])
+      expect(functionCalls).toHaveLength(1)
+      expect(functionCalls[0]).toMatchObject({
+        functionName: "getMeetings",
+        status: "succeeded",
+        result: [{ id: "meeting-1" }, { id: "meeting-2" }],
+      })
+    } finally {
+      rmSync(filename, { force: true })
+    }
   })
 })
